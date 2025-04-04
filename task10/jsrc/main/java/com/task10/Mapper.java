@@ -10,7 +10,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-public class WeatherDataMapper {
+public class Mapper {
     private final ObjectMapper jsonParser = new ObjectMapper();
 
     public Map<String, AttributeValue> convertToDynamoItem(JsonNode weatherInfo) {
@@ -25,6 +25,7 @@ public class WeatherDataMapper {
         if (weatherInfo == null) {
             return weatherForecast;
         }
+
 
         weatherForecast.put("elevation", new AttributeValue().withN(String.valueOf(weatherInfo.get("elevation") != null ? weatherInfo.get("elevation").asDouble() : 0.0)));
         weatherForecast.put("generationtime_ms", new AttributeValue().withN(String.valueOf(weatherInfo.get("generationtime_ms") != null ? weatherInfo.get("generationtime_ms").asDouble() : 0.0)));

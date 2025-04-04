@@ -8,10 +8,10 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 
-public class OpenMeteo {
+public class Client {
+    private static final String API_ENDPOINT = "https://api.open-meteo.com/v1/forecast?latitude=%.2f&longitude=%.2f&current=temperature_2m,wind_speed_10m&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m";
     private final HttpClient apiClient = HttpClient.newHttpClient();
     private final ObjectMapper jsonParser = new ObjectMapper();
-    private static final String API_ENDPOINT = "https://api.open-meteo.com/v1/forecast?latitude=%.2f&longitude=%.2f&current=temperature_2m,wind_speed_10m&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m";
 
     public JsonNode getWeather(double lat, double lng) throws Exception {
         String apiUrl = String.format(API_ENDPOINT, lat, lng);

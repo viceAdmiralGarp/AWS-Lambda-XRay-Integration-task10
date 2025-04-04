@@ -33,12 +33,12 @@ import java.util.Map;
 @EnvironmentVariables(value = {@EnvironmentVariable(key = "table", value = "${target_table}")})
 public class Processor implements RequestHandler<Object, Map<String, Object>> {
 
-    private static final double DEFAULT_LAT = 50.4375;
     private static final double DEFAULT_LONG = 30.5;
+    private static final double DEFAULT_LAT = 50.4375;
 
+    private final Client weatherService = new Client();
+    private final Mapper weatherMapper = new Mapper();
     private final AmazonDynamoDB dynamoClient = AmazonDynamoDBClientBuilder.standard().build();
-    private final OpenMeteo weatherService = new OpenMeteo();
-    private final WeatherDataMapper weatherMapper = new WeatherDataMapper();
 
     @Override
     public Map<String, Object> handleRequest(Object input, Context context) {
