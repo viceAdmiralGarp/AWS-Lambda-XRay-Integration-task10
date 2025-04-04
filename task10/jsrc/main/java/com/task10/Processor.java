@@ -32,40 +32,41 @@ import java.util.Map;
 )
 @EnvironmentVariables(value = {@EnvironmentVariable(key = "table", value = "${target_table}")})
 public class Processor implements RequestHandler<Object, Map<String, Object>> {
-    private static final double DEFAULT_LATITUDE = 50.4375;
-    private static final double DEFAULT_LONGITUDE = 30.5;
 
-    private final AmazonDynamoDB dynamoDBClient = AmazonDynamoDBClientBuilder.standard().build();
-    private final MeteorologyService weatherAPI = new MeteorologyService();
-    private final ClimateDataConverter dataMapper = new ClimateDataConverter();
+    private static final double DEFAULT_LAT = 50.4375;
+    private static final double DEFAULT_LONG = 30.5;
+
+    private final AmazonDynamoDB dynamoClient = AmazonDynamoDBClientBuilder.standard().build();
+    private final OpenMeteo weatherService = new OpenMeteo();
+    private final WeatherDataMapper weatherMapper = new WeatherDataMapper();
 
     @Override
-    public Map<String, Object> handleRequest(Object request, Context context) {
+    public Map<String, Object> handleRequest(Object input, Context context) {
         try {
-            JsonNode weatherData = weatherAPI.fetchWeather(DEFAULT_LATITUDE, DEFAULT_LONGITUDE);
-            Map<String, AttributeValue> dynamoItem = dataMapper.convertToDynamoDBItem(weatherData);
+            JsonNode weatherInfo = weatherService.getWeather(DEFAULT_LAT, DEFAULT_LONG);
+            Map<String, AttributeValue> dbItem = weatherMapper.convertToDynamoItem(weatherInfo);
 
-            String dynamoTableName = System.getenv("table");
-            dynamoDBClient.putItem(dynamoTableName, dynamoItem);
+            String dynamoTable = System.getenv("table");
+            dynamoClient.putItem(dynamoTable, dbItem);
 
-            return generateSuccessResponse();
-        } catch (Exception e) {
-            context.getLogger().log("Error: " + e.getMessage());
-            return generateErrorResponse(e.getMessage());
+            return createSuccessResult();
+        } catch (Exception ex) {
+            context.getLogger().log("Error occurred: " + ex.getMessage());
+            return createErrorResult(ex.getMessage());
         }
     }
 
-    private Map<String, Object> generateErrorResponse(String errorMessage) {
-        Map<String, Object> errorResponse = new HashMap<>();
-        errorResponse.put("statusCode", 500);
-        errorResponse.put("body", "Error processing weather data: " + errorMessage);
-        return errorResponse;
-    }
-
-    private Map<String, Object> generateSuccessResponse() {
+    private Map<String, Object> createSuccessResult() {
         Map<String, Object> response = new HashMap<>();
         response.put("statusCode", 200);
-        response.put("body", "Weather forecast successfully saved to DynamoDB");
+        response.put("body", "Weather data stored successfully");
         return response;
+    }
+
+    private Map<String, Object> createErrorResult(String errorMsg) {
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("statusCode", 500);
+        errorResponse.put("body", "Failed to process weather data: " + errorMsg);
+        return errorResponse;
     }
 }
