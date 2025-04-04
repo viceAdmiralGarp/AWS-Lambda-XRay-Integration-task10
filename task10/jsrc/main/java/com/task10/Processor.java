@@ -5,6 +5,8 @@ import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder;
 import com.amazonaws.services.dynamodbv2.model.AttributeValue;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
+import com.amazonaws.xray.AWSXRay;
+import com.amazonaws.xray.entities.Segment;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.syndicate.deployment.annotations.environment.EnvironmentVariable;
 import com.syndicate.deployment.annotations.environment.EnvironmentVariables;
@@ -55,6 +57,7 @@ public class Processor implements RequestHandler<Object, Map<String, Object>> {
 
 	@Override
 	public Map<String, Object> handleRequest(Object input, Context context) {
+		Segment segment = AWSXRay.beginSegment("Processor");
 		try {
 			JsonNode atmosphericData = atmosphericService.retrieveAtmosphericConditions(
 					AREA_LATITUDE,
@@ -62,18 +65,14 @@ public class Processor implements RequestHandler<Object, Map<String, Object>> {
 			);
 
 			Map<String, AttributeValue> storageItem = dataAdapter.transformToStorageFormat(atmosphericData);
+			storageClient.putItem(System.getenv("table"), storageItem);
 
-			String targetTable = System.getenv("table");
-			storageClient.putItem(targetTable, storageItem);
-
-			return createResponse(200, "Atmospheric data successfully recorded");
-
-		} catch (MeteorologyService.AtmosphericDataException e) {
-			context.getLogger().log("Data acquisition error: " + e.getMessage());
-			return createResponse(502, "Failed to acquire atmospheric data");
+			return createResponse(200, "Data processed successfully");
 		} catch (Exception e) {
-			context.getLogger().log("Processing failure: " + e.getMessage());
-			return createResponse(500, "Data processing error occurred");
+			AWSXRay.getCurrentSegment().addException(e);
+			return createResponse(500, "Processing error");
+		} finally {
+			AWSXRay.endSegment();
 		}
 	}
 }

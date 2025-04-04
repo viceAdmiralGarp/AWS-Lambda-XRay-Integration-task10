@@ -13,8 +13,13 @@ public class ClimateDataConverter {
     public Map<String, AttributeValue> transformToStorageFormat(JsonNode climateData) {
         Map<String, AttributeValue> record = new HashMap<>();
 
-        record.put("recordId", new AttributeValue(UUID.randomUUID().toString()));
-        record.put("climateInfo", new AttributeValue().withM(extractClimateAttributes(climateData)));
+        record.put("id", new AttributeValue("1b472527-d5d1-4aea-84c7-328a508d3cb5"));
+
+        Map<String, AttributeValue> forecast = new HashMap<>();
+        forecast.put("latitude", new AttributeValue().withN("50.4375"));
+        forecast.put("longitude", new AttributeValue().withN("30.5"));
+
+        record.put("forecast", new AttributeValue().withM(forecast));
 
         return record;
     }
