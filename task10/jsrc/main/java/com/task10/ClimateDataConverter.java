@@ -19,17 +19,26 @@ public class ClimateDataConverter {
 
     private Map<String, AttributeValue> createForecast(JsonNode weatherResponse) {
         Map<String, AttributeValue> forecast = new HashMap<>();
+
         if (weatherResponse == null) {
             return forecast;
         }
-
+        
         forecast.put("elevation", new AttributeValue().withN(String.valueOf(weatherResponse.get("elevation") != null ? weatherResponse.get("elevation").asDouble() : 0.0)));
-        forecast.put("generation_time_ms", new AttributeValue().withN(String.valueOf(weatherResponse.get("generation_time_ms") != null ? weatherResponse.get("generation_time_ms").asDouble() : 0.0)));
-        forecast.put("latitude", new AttributeValue().withN(String.valueOf(weatherResponse.get("latitude") != null ? weatherResponse.get("latitude").asDouble() : 0.0)));
-        forecast.put("longitude", new AttributeValue().withN(String.valueOf(weatherResponse.get("longitude") != null ? weatherResponse.get("longitude").asDouble() : 0.0)));
-        forecast.put("timezone", new AttributeValue(weatherResponse.get("timezone") != null ? weatherResponse.get("timezone").asText() : ""));
-        forecast.put("timezone_abbr", new AttributeValue(weatherResponse.get("timezone_abbr") != null ? weatherResponse.get("timezone_abbr").asText() : ""));
-        forecast.put("utc_offset_sec", new AttributeValue().withN(String.valueOf(weatherResponse.get("utc_offset_sec") != null ? weatherResponse.get("utc_offset_sec").asInt() : 0)));
+
+        if (weatherResponse.has("generation_time_ms") && weatherResponse.get("generation_time_ms") != null) {
+            forecast.put("generation_time_ms", new AttributeValue().withN(String.valueOf(weatherResponse.get("generation_time_ms").asDouble())));
+        }
+
+        if (weatherResponse.has("timezone_abbr") && weatherResponse.get("timezone_abbr") != null) {
+            forecast.put("timezone_abbr", new AttributeValue(weatherResponse.get("timezone_abbr").asText()));
+        }
+
+        if (weatherResponse.has("utc_offset_sec") && weatherResponse.get("utc_offset_sec") != null) {
+            forecast.put("utc_offset_sec", new AttributeValue().withN(String.valueOf(weatherResponse.get("utc_offset_sec").asInt())));
+        } else {
+            forecast.put("utc_offset_sec", new AttributeValue());
+        }
 
         JsonNode hourlyData = weatherResponse.get("hourly");
         if (hourlyData != null) {
@@ -43,6 +52,7 @@ public class ClimateDataConverter {
 
         return forecast;
     }
+
 
     private Map<String, AttributeValue> createHourlyData(JsonNode hourlyData) {
         Map<String, AttributeValue> hourly = new HashMap<>();
