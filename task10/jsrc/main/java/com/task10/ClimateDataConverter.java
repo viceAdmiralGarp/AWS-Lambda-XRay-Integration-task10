@@ -2,106 +2,67 @@ package com.task10;
 
 import com.amazonaws.services.dynamodbv2.model.AttributeValue;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
 public class ClimateDataConverter {
-    private static final String[] WEATHER_MEASUREMENTS = {"temperature_2m", "relative_humidity_2m", "wind_speed_10m"};
-    private static final String[] GEO_FIELDS = {"elevation", "latitude", "longitude"};
+    private final ObjectMapper jsonMapper = new ObjectMapper();
 
-    public Map<String, AttributeValue> transformToStorageFormat(JsonNode climateData) {
-        Map<String, AttributeValue> record = new HashMap<>();
+    public Map<String, AttributeValue> convertToDynamoDBItem(JsonNode weatherResponse) {
+        Map<String, AttributeValue> dynamoItem = new HashMap<>();
+        dynamoItem.put("id", new AttributeValue(UUID.randomUUID().toString()));
+        dynamoItem.put("forecast", new AttributeValue().withM(createForecast(weatherResponse)));
+        return dynamoItem;
+    }
 
-        record.put("id", new AttributeValue("1b472527-d5d1-4aea-84c7-328a508d3cb5"));
-
+    private Map<String, AttributeValue> createForecast(JsonNode weatherResponse) {
         Map<String, AttributeValue> forecast = new HashMap<>();
-        forecast.put("latitude", new AttributeValue().withN("50.4375"));
-        forecast.put("longitude", new AttributeValue().withN("30.5"));
+        if (weatherResponse == null) {
+            return forecast;
+        }
 
-        record.put("forecast", new AttributeValue().withM(forecast));
+        forecast.put("elevation", new AttributeValue().withN(String.valueOf(weatherResponse.get("elevation") != null ? weatherResponse.get("elevation").asDouble() : 0.0)));
+        forecast.put("generation_time_ms", new AttributeValue().withN(String.valueOf(weatherResponse.get("generation_time_ms") != null ? weatherResponse.get("generation_time_ms").asDouble() : 0.0)));
+        forecast.put("latitude", new AttributeValue().withN(String.valueOf(weatherResponse.get("latitude") != null ? weatherResponse.get("latitude").asDouble() : 0.0)));
+        forecast.put("longitude", new AttributeValue().withN(String.valueOf(weatherResponse.get("longitude") != null ? weatherResponse.get("longitude").asDouble() : 0.0)));
+        forecast.put("timezone", new AttributeValue(weatherResponse.get("timezone") != null ? weatherResponse.get("timezone").asText() : ""));
+        forecast.put("timezone_abbr", new AttributeValue(weatherResponse.get("timezone_abbr") != null ? weatherResponse.get("timezone_abbr").asText() : ""));
+        forecast.put("utc_offset_sec", new AttributeValue().withN(String.valueOf(weatherResponse.get("utc_offset_sec") != null ? weatherResponse.get("utc_offset_sec").asInt() : 0)));
 
-        return record;
+        JsonNode hourlyData = weatherResponse.get("hourly");
+        if (hourlyData != null) {
+            forecast.put("hourly", new AttributeValue().withM(createHourlyData(hourlyData)));
+        }
+
+        JsonNode hourlyUnits = weatherResponse.get("hourly_units");
+        if (hourlyUnits != null) {
+            forecast.put("hourly_units", new AttributeValue().withM(createHourlyUnits(hourlyUnits)));
+        }
+
+        return forecast;
     }
 
-    private Map<String, AttributeValue> extractClimateAttributes(JsonNode source) {
-        Map<String, AttributeValue> attributes = new HashMap<>();
-
-        processGeoData(source, attributes);
-        processTemporalData(source, attributes);
-        processMeasurements(source, attributes);
-
-        return attributes;
-    }
-
-    private void processGeoData(JsonNode source, Map<String, AttributeValue> attributes) {
-        for (String field : GEO_FIELDS) {
-            if (source.has(field)) {
-                attributes.put(field, createNumericAttribute(source.get(field)));
-            }
-        }
-
-        if (source.has("timezone")) {
-            attributes.put("timezone", new AttributeValue(source.get("timezone").asText()));
-        }
-    }
-
-    private void processTemporalData(JsonNode source, Map<String, AttributeValue> attributes) {
-        if (source.has("generationtime_ms")) {
-            attributes.put("processingTime", createNumericAttribute(source.get("generationtime_ms")));
-        }
-
-        if (source.has("utc_offset_seconds")) {
-            attributes.put("utcOffset", createNumericAttribute(source.get("utc_offset_seconds")));
-        }
-    }
-
-    private void processMeasurements(JsonNode source, Map<String, AttributeValue> attributes) {
-        if (source.has("hourly")) {
-            attributes.put("hourlyReadings", new AttributeValue().withM(processHourlyReadings(source.get("hourly"))));
-        }
-
-        if (source.has("hourly_units")) {
-            attributes.put("measurementUnits", new AttributeValue().withM(processMeasurementUnits(source.get("hourly_units"))));
-        }
-    }
-
-    private Map<String, AttributeValue> processHourlyReadings(JsonNode hourlyData) {
-        Map<String, AttributeValue> readings = new HashMap<>();
-
-        for (String measurement : WEATHER_MEASUREMENTS) {
-            if (hourlyData.has(measurement)) {
-                readings.put(measurement, convertToDynamoList(hourlyData.get(measurement)));
-            }
-        }
-
-        return readings;
-    }
-
-    private AttributeValue convertToDynamoList(JsonNode arrayNode) {
-        if (arrayNode.isTextual()) {
-            return new AttributeValue().withL(
-                    Arrays.stream(arrayNode.asText().split(","))
-                            .map(AttributeValue::new)
-                            .collect(Collectors.toList())
-            );
-        }
-        return new AttributeValue().withL(
-                Arrays.stream(arrayNode.toString().split(","))
-                        .map(value -> new AttributeValue().withN(value))
+    private Map<String, AttributeValue> createHourlyData(JsonNode hourlyData) {
+        Map<String, AttributeValue> hourly = new HashMap<>();
+        hourly.put("temperature_2m", new AttributeValue().withL(
+                Arrays.stream(jsonMapper.convertValue(hourlyData.get("temperature_2m"), double[].class))
+                        .mapToObj(d -> new AttributeValue().withN(String.valueOf(d)))
                         .collect(Collectors.toList())
-        );
+        ));
+        hourly.put("time", new AttributeValue().withL(
+                Arrays.stream(jsonMapper.convertValue(hourlyData.get("time"), String[].class))
+                        .map(AttributeValue::new)
+                        .collect(Collectors.toList())
+        ));
+        return hourly;
     }
 
-    private AttributeValue createNumericAttribute(JsonNode node) {
-        return new AttributeValue().withN(node.asText());
-    }
-
-    private Map<String, AttributeValue> processMeasurementUnits(JsonNode units) {
-        Map<String, AttributeValue> result = new HashMap<>();
-        units.fields().forEachRemaining(entry -> {
-            result.put(entry.getKey(), new AttributeValue(entry.getValue().asText()));
-        });
-        return result;
+    private Map<String, AttributeValue> createHourlyUnits(JsonNode unitsNode) {
+        Map<String, AttributeValue> hourlyUnits = new HashMap<>();
+        hourlyUnits.put("temperature_2m", new AttributeValue(unitsNode.get("temperature_2m") != null ? unitsNode.get("temperature_2m").asText() : ""));
+        hourlyUnits.put("time", new AttributeValue(unitsNode.get("time") != null ? unitsNode.get("time").asText() : ""));
+        return hourlyUnits;
     }
 }

@@ -5,8 +5,6 @@ import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder;
 import com.amazonaws.services.dynamodbv2.model.AttributeValue;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
-import com.amazonaws.xray.AWSXRay;
-import com.amazonaws.xray.entities.Segment;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.syndicate.deployment.annotations.environment.EnvironmentVariable;
 import com.syndicate.deployment.annotations.environment.EnvironmentVariables;
@@ -21,58 +19,53 @@ import java.util.HashMap;
 import java.util.Map;
 
 @LambdaHandler(
-		lambdaName = "processor",
-		roleName = "processor-role",
-		isPublishVersion = true,
-		aliasName = "${lambdas_alias_name}",
-		logsExpiration = RetentionSetting.SYNDICATE_ALIASES_SPECIFIED,
-		tracingMode = TracingMode.Active
+        lambdaName = "processor",
+        roleName = "processor-role",
+        isPublishVersion = true,
+        aliasName = "${lambdas_alias_name}",
+        logsExpiration = RetentionSetting.SYNDICATE_ALIASES_SPECIFIED,
+        tracingMode = TracingMode.Active
 )
 @LambdaUrlConfig(
-		authType = AuthType.NONE,
-		invokeMode = InvokeMode.BUFFERED
+        authType = AuthType.NONE,
+        invokeMode = InvokeMode.BUFFERED
 )
 @EnvironmentVariables(value = {@EnvironmentVariable(key = "table", value = "${target_table}")})
 public class Processor implements RequestHandler<Object, Map<String, Object>> {
+    private static final double DEFAULT_LATITUDE = 50.4375;
+    private static final double DEFAULT_LONGITUDE = 30.5;
 
-	private static final double AREA_LATITUDE = 50.4375;
-	private static final double AREA_LONGITUDE = 30.5;
+    private final AmazonDynamoDB dynamoDBClient = AmazonDynamoDBClientBuilder.standard().build();
+    private final MeteorologyService weatherAPI = new MeteorologyService();
+    private final ClimateDataConverter dataMapper = new ClimateDataConverter();
 
-	private final AmazonDynamoDB storageClient;
-	private final MeteorologyService atmosphericService;
-	private final ClimateDataConverter dataAdapter;
+    @Override
+    public Map<String, Object> handleRequest(Object request, Context context) {
+        try {
+            JsonNode weatherData = weatherAPI.fetchWeather(DEFAULT_LATITUDE, DEFAULT_LONGITUDE);
+            Map<String, AttributeValue> dynamoItem = dataMapper.convertToDynamoDBItem(weatherData);
 
-	public Processor() {
-		this.storageClient = AmazonDynamoDBClientBuilder.standard().build();
-		this.atmosphericService = new MeteorologyService();
-		this.dataAdapter = new ClimateDataConverter();
-	}
+            String dynamoTableName = System.getenv("table");
+            dynamoDBClient.putItem(dynamoTableName, dynamoItem);
 
-	private Map<String, Object> createResponse(int status, String message) {
-		Map<String, Object> result = new HashMap<>();
-		result.put("statusCode", status);
-		result.put("body", message);
-		return result;
-	}
+            return generateSuccessResponse();
+        } catch (Exception e) {
+            context.getLogger().log("Error: " + e.getMessage());
+            return generateErrorResponse(e.getMessage());
+        }
+    }
 
-	@Override
-	public Map<String, Object> handleRequest(Object input, Context context) {
-		Segment segment = AWSXRay.beginSegment("Processor");
-		try {
-			JsonNode atmosphericData = atmosphericService.retrieveAtmosphericConditions(
-					AREA_LATITUDE,
-					AREA_LONGITUDE
-			);
+    private Map<String, Object> generateErrorResponse(String errorMessage) {
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("statusCode", 500);
+        errorResponse.put("body", "Error processing weather data: " + errorMessage);
+        return errorResponse;
+    }
 
-			Map<String, AttributeValue> storageItem = dataAdapter.transformToStorageFormat(atmosphericData);
-			storageClient.putItem(System.getenv("table"), storageItem);
-
-			return createResponse(200, "Data processed successfully");
-		} catch (Exception e) {
-			AWSXRay.getCurrentSegment().addException(e);
-			return createResponse(500, "Processing error");
-		} finally {
-			AWSXRay.endSegment();
-		}
-	}
+    private Map<String, Object> generateSuccessResponse() {
+        Map<String, Object> response = new HashMap<>();
+        response.put("statusCode", 200);
+        response.put("body", "Weather forecast successfully saved to DynamoDB");
+        return response;
+    }
 }
